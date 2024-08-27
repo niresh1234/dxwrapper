@@ -640,7 +640,7 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight)
 
 	// Get new window rect
 	Rect = { 0, 0, displayWidth, displayHeight };
-	AdjustWindowRectEx(&Rect, GetWindowLong(MainhWnd, GWL_STYLE), GetMenu(MainhWnd) != NULL, lExStyle);
+	AdjustWindowRectEx(&Rect, GetWindowLong(MainhWnd, GWL_EXSTYLE), GetMenu(MainhWnd) != NULL, lExStyle);
 
 	// Get upper left window position
 	bool SetWindowPositionFlag = Config.FullscreenWindowMode;
