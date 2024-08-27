@@ -683,6 +683,16 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 		lStyle &= ~WS_OVERLAPPEDWINDOW;
 	}*/
 
+	if (!Config.WindowModeBorder)
+	{
+		lStyle &= ~WS_OVERLAPPEDWINDOW;
+	}
+	else if (Config.WindowModeBorder && !Config.FullscreenWindowMode && screenWidth > Rect.right - Rect.left && screenHeight > Rect.bottom - Rect.top)
+	{
+		lStyle |= WS_OVERLAPPEDWINDOW;
+	}
+
+				
 	// Set window style
 	if (Config.EnableWindowMode || (lOriginalStyle & WS_VISIBLE) == NULL)
 	{
