@@ -674,14 +674,14 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 	// Get new style
 	RECT Rect = { 0, 0, displayWidth, displayHeight };
 	AdjustWindowRectEx(&Rect, lStyle | WS_OVERLAPPEDWINDOW, GetMenu(MainhWnd) != NULL, lExStyle);
-	if (Config.WindowModeBorder && !Config.FullscreenWindowMode && screenWidth > Rect.right - Rect.left && screenHeight > Rect.bottom - Rect.top)
+	/*if (Config.WindowModeBorder && !Config.FullscreenWindowMode && screenWidth > Rect.right - Rect.left && screenHeight > Rect.bottom - Rect.top)
 	{
 		lStyle |= WS_OVERLAPPEDWINDOW;
 	}
 	else if (Config.FullscreenWindowMode)
 	{
 		lStyle &= ~WS_OVERLAPPEDWINDOW;
-	}
+	}*/
 
 	// Set window style
 	if (Config.EnableWindowMode || (lOriginalStyle & WS_VISIBLE) == NULL)
