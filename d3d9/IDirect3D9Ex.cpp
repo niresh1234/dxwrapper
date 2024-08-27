@@ -689,7 +689,7 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 		lStyle = (Config.EnableWindowMode) ? lStyle : (lOriginalStyle | WS_VISIBLE);
 		SetWindowLong(MainhWnd, GWL_STYLE, lStyle);
 		//SetWindowPos(MainhWnd, ((lExStyle & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-		SetWindowPos(MainhWnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+		SetWindowPos(MainhWnd, NULL, 0, 0, 1600, 900, NULL);
 	}
 
 	// Get new window rect
