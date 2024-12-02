@@ -674,7 +674,7 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 	AdjustWindowRectEx(&Rect, lStyle | WS_OVERLAPPEDWINDOW, GetMenu(MainhWnd) != NULL, lExStyle);
 	if (Config.WindowModeBorder && !Config.FullscreenWindowMode && screenWidth > Rect.right - Rect.left && screenHeight > Rect.bottom - Rect.top)
 	{
-		lStyle |= WS_OVERLAPPEDWINDOW;
+		lStyle &= ~WS_OVERLAPPEDWINDOW;
 	}
 	else if (Config.EnableWindowMode)
 	{
