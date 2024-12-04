@@ -660,8 +660,8 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 	}
 
 	// Get screen width and height
-	LONG screenWidth = 0, screenHeight = 0;
-	Utils::GetScreenSize(MainhWnd, screenWidth, screenHeight);
+	LONG screenWidth = 1280, screenHeight = 720;
+	//Utils::GetScreenSize(MainhWnd, screenWidth, screenHeight);
 	RECT screenRect = {};
 	Utils::GetDesktopRect(MainhWnd, screenRect);
 
