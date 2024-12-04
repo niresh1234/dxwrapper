@@ -690,7 +690,7 @@ void AdjustWindow(HWND MainhWnd, LONG displayWidth, LONG displayHeight, bool isW
 
 	// Get new window rect
 	Rect = { 0, 0, displayWidth, displayHeight };
-	AdjustWindowRectEx(&Rect, GetWindowLong(MainhWnd, GWL_STYLE), GetMenu(MainhWnd) != NULL, lExStyle);
+	AdjustWindowRectEx(&Rect, GetMenu(MainhWnd) != NULL, lExStyle, GetWindowLong(MainhWnd, GWL_STYLE));
 	Rect = { 0, 0, Rect.right - Rect.left, Rect.bottom - Rect.top };
 
 	// Get upper left window position
