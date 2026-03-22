@@ -4,19 +4,19 @@ class m_IDirect3DSwapChain9Ex : public IDirect3DSwapChain9Ex, public AddressLook
 {
 private:
 	LPDIRECT3DSWAPCHAIN9 ProxyInterface;
-	LPDIRECT3DSWAPCHAIN9EX ProxyInterfaceEx;
+	LPDIRECT3DSWAPCHAIN9EX ProxyInterfaceEx = nullptr;
 	m_IDirect3DDevice9Ex* m_pDeviceEx;
-	IID WrapperID;
-
-	// Information
-	inline bool IsForcingD3d9to9Ex() const { return (Config.D3d9to9Ex && ProxyInterface == ProxyInterfaceEx); }
+	REFIID WrapperID;
 
 public:
 	m_IDirect3DSwapChain9Ex(LPDIRECT3DSWAPCHAIN9EX pSwapChain9, m_IDirect3DDevice9Ex* pDevice, REFIID DeviceID) : ProxyInterface(pSwapChain9), m_pDeviceEx(pDevice), WrapperID(DeviceID)
 	{
 		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ") " << WrapperID);
 
-		InitInterface(pDevice, WrapperID, nullptr);
+		if (WrapperID == IID_IDirect3DSwapChain9Ex)
+		{
+			ProxyInterfaceEx = pSwapChain9;
+		}
 
 		m_pDeviceEx->GetLookupTable()->SaveAddress(this, ProxyInterface);
 	}
@@ -45,21 +45,5 @@ public:
 	STDMETHOD(GetDisplayModeEx)(THIS_ D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation);
 
 	// Helper functions
-	LPDIRECT3DSWAPCHAIN9 GetProxyInterface() const { return ProxyInterface; }
-	void InitInterface(m_IDirect3DDevice9Ex* Device, REFIID riid, void*) {
-		m_pDeviceEx = Device;
-		WrapperID == riid;
-		if (riid == IID_IDirect3DSwapChain9Ex || ProxyInterface == ProxyInterfaceEx)
-		{
-			ProxyInterfaceEx = reinterpret_cast<LPDIRECT3DSWAPCHAIN9EX>(ProxyInterface);
-		}
-		else
-		{
-			ProxyInterfaceEx = nullptr;
-		}
-		if (Config.D3d9to9Ex && !IsForcingD3d9to9Ex())
-		{
-			LOG_LIMIT(3, __FUNCTION__ << " Warning: Creating non-Ex interface when using D3d9to9Ex!");
-		}
-	}
+	LPDIRECT3DSWAPCHAIN9 GetProxyInterface() { return ProxyInterface; }
 };

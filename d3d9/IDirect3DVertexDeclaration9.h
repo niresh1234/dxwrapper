@@ -5,14 +5,12 @@ class m_IDirect3DVertexDeclaration9 : public IDirect3DVertexDeclaration9, public
 private:
 	LPDIRECT3DVERTEXDECLARATION9 ProxyInterface;
 	m_IDirect3DDevice9Ex* m_pDeviceEx;
-	const IID WrapperID = IID_IDirect3DVertexDeclaration9;
+	REFIID WrapperID = IID_IDirect3DVertexDeclaration9;
 
 public:
 	m_IDirect3DVertexDeclaration9(LPDIRECT3DVERTEXDECLARATION9 pDeclaration9, m_IDirect3DDevice9Ex* pDevice) : ProxyInterface(pDeclaration9), m_pDeviceEx(pDevice)
 	{
 		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ")");
-
-		InitInterface(pDevice, WrapperID, nullptr);
 
 		m_pDeviceEx->GetLookupTable()->SaveAddress(this, ProxyInterface);
 	}
@@ -31,6 +29,5 @@ public:
 	STDMETHOD(GetDeclaration)(THIS_ D3DVERTEXELEMENT9* pElement, UINT* pNumElements);
 
 	// Helper functions
-	LPDIRECT3DVERTEXDECLARATION9 GetProxyInterface() const { return ProxyInterface; }
-	void InitInterface(m_IDirect3DDevice9Ex* Device, REFIID, void*) { m_pDeviceEx = Device; }
+	LPDIRECT3DVERTEXDECLARATION9 GetProxyInterface() { return ProxyInterface; }
 };

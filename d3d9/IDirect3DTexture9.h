@@ -5,19 +5,12 @@ class m_IDirect3DTexture9 : public IDirect3DTexture9, public AddressLookupTableD
 private:
 	LPDIRECT3DTEXTURE9 ProxyInterface;
 	m_IDirect3DDevice9Ex* m_pDeviceEx;
-	const IID WrapperID = IID_IDirect3DTexture9;
-
-	DWORD TextureUSN = 0;
-	std::unordered_set<m_IDirect3DSurface9*> SurfaceLevelList;
-
-	inline void IncrementTextureUSN() { TextureUSN++; }
+	REFIID WrapperID = IID_IDirect3DTexture9;
 
 public:
 	m_IDirect3DTexture9(LPDIRECT3DTEXTURE9 pTexture9, m_IDirect3DDevice9Ex* pDevice) : ProxyInterface(pTexture9), m_pDeviceEx(pDevice)
 	{
 		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ")");
-
-		InitInterface(pDevice, WrapperID, nullptr);
 
 		m_pDeviceEx->GetLookupTable()->SaveAddress(this, ProxyInterface);
 	}
@@ -31,7 +24,7 @@ public:
 	STDMETHOD_(ULONG, AddRef)(THIS);
 	STDMETHOD_(ULONG, Release)(THIS);
 
-	/*** IDirect3DTexture9 methods ***/
+	/*** IDirect3DBaseTexture9 methods ***/
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice);
 	STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid, CONST void* pData, DWORD SizeOfData, DWORD Flags);
 	STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid, void* pData, DWORD* pSizeOfData);
@@ -53,11 +46,5 @@ public:
 	STDMETHOD(AddDirtyRect)(THIS_ CONST RECT* pDirtyRect);
 
 	// Helper functions
-	LPDIRECT3DTEXTURE9 GetProxyInterface() const { return ProxyInterface; }
-	void InitInterface(m_IDirect3DDevice9Ex* Device, REFIID, void*) { m_pDeviceEx = Device; }
-	DWORD GetTextureUSN() const { return TextureUSN; }
-	void AddSurfaceToList(m_IDirect3DSurface9* pSurface) { SurfaceLevelList.insert(pSurface); }
-	void RemoveSurfaceFromList(m_IDirect3DSurface9* pSurface) { SurfaceLevelList.erase(pSurface); }
-	void PrepareReadingFromTexture();
-	void PrepareWritingToTexture(bool IncreamentUSN);
+	LPDIRECT3DTEXTURE9 GetProxyInterface() { return ProxyInterface; }
 };

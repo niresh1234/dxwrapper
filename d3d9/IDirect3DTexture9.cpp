@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2025 Elisha Riedlinger
+* Copyright (C) 2024 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -16,26 +16,20 @@
 
 #include "d3d9.h"
 
-// ******************************
-// IUnknown functions
-// ******************************
-
 HRESULT m_IDirect3DTexture9::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ") " << riid;
 
-	if (!ppvObj)
-	{
-		return E_POINTER;
-	}
-
 	if (riid == IID_IUnknown || riid == WrapperID || riid == IID_IDirect3DBaseTexture9 || riid == IID_IDirect3DResource9)
 	{
-		AddRef();
+		HRESULT hr = ProxyInterface->QueryInterface(WrapperID, ppvObj);
 
-		*ppvObj = this;
+		if (SUCCEEDED(hr))
+		{
+			*ppvObj = this;
+		}
 
-		return D3D_OK;
+		return hr;
 	}
 
 	HRESULT hr = ProxyInterface->QueryInterface(riid, ppvObj);
@@ -59,40 +53,19 @@ ULONG m_IDirect3DTexture9::Release(THIS)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	ULONG ref = ProxyInterface->Release();
-
-	if (ref == 0)
-	{
-		for (const auto& pSurface : SurfaceLevelList)
-		{
-			pSurface->ClearTextureContainer();
-		}
-
-		if (m_pDeviceEx->GetClientDXVersion() < 8)
-		{
-			m_pDeviceEx->GetLookupTable()->DeleteAddress(this);
-
-			delete this;
-		}
-	}
-
-	return ref;
+	return ProxyInterface->Release();
 }
-
-// ******************************
-// IDirect3DTexture9 methods
-// ******************************
 
 HRESULT m_IDirect3DTexture9::GetDevice(THIS_ IDirect3DDevice9** ppDevice)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	if (FAILED(m_pDeviceEx->QueryInterface(m_pDeviceEx->GetIID(), (LPVOID*)ppDevice)))
+	if (!ppDevice)
 	{
 		return D3DERR_INVALIDCALL;
 	}
 
-	return D3D_OK;
+	return m_pDeviceEx->QueryInterface(m_pDeviceEx->GetIID(), (LPVOID*)ppDevice);
 }
 
 HRESULT m_IDirect3DTexture9::SetPrivateData(THIS_ REFGUID refguid, CONST void* pData, DWORD SizeOfData, DWORD Flags)
@@ -201,12 +174,7 @@ HRESULT m_IDirect3DTexture9::GetSurfaceLevel(THIS_ UINT Level, IDirect3DSurface9
 
 	if (SUCCEEDED(hr) && ppSurfaceLevel)
 	{
-		D3d9Wrapper::genericQueryInterface(IID_IDirect3DSurface9, (LPVOID*)ppSurfaceLevel, m_pDeviceEx);
-
-		if (Level == 0)
-		{
-			reinterpret_cast<m_IDirect3DSurface9*>(*ppSurfaceLevel)->SetTextureContainer(this);
-		}
+		*ppSurfaceLevel = m_pDeviceEx->GetLookupTable()->FindAddress<m_IDirect3DSurface9, m_IDirect3DDevice9Ex, LPVOID>(*ppSurfaceLevel, m_pDeviceEx, IID_IDirect3DSurface9, nullptr);
 	}
 
 	return hr;
@@ -216,15 +184,7 @@ HRESULT m_IDirect3DTexture9::LockRect(THIS_ UINT Level, D3DLOCKED_RECT* pLockedR
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	HRESULT hr = ProxyInterface->LockRect(Level, pLockedRect, pRect, Flags);
-
-	if (SUCCEEDED(hr))
-	{
-		const bool IncreamentUSN = !(Flags & D3DLOCK_READONLY);
-		PrepareWritingToTexture(IncreamentUSN);
-	}
-
-	return hr;
+	return ProxyInterface->LockRect(Level, pLockedRect, pRect, Flags);
 }
 
 HRESULT m_IDirect3DTexture9::UnlockRect(THIS_ UINT Level)
@@ -239,25 +199,4 @@ HRESULT m_IDirect3DTexture9::AddDirtyRect(THIS_ CONST RECT* pDirtyRect)
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
 	return ProxyInterface->AddDirtyRect(pDirtyRect);
-}
-
-// Helper functions
-void m_IDirect3DTexture9::PrepareReadingFromTexture()
-{
-	for (const auto& pSurface : SurfaceLevelList)
-	{
-		pSurface->CopyToRealSurface();
-	}
-}
-
-void m_IDirect3DTexture9::PrepareWritingToTexture(bool IncreamentUSN)
-{
-	for (const auto& pSurface : SurfaceLevelList)
-	{
-		pSurface->CopyToRealSurface();
-	}
-	if (IncreamentUSN)
-	{
-		IncrementTextureUSN();
-	}
 }

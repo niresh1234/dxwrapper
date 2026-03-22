@@ -1,6 +1,10 @@
 #pragma once
 
-constexpr UINT MaxIndex = 18;
+#include <deque>
+#include <unordered_map>
+#include <algorithm>
+
+constexpr UINT MaxIndex = 16;
 
 class AddressLookupTableD3d9Object
 {
@@ -15,22 +19,6 @@ public:
 	explicit AddressLookupTableD3d9();
 	~AddressLookupTableD3d9();
 
-	template <typename T, typename D, typename L>
-	T* FindCreateAddress(IUnknown* Proxy, D* Device, REFIID riid, L Data);
-
-	template <typename T>
-	T* FindAddress(IUnknown* Proxy);
-
-	template <typename T, typename M>
-	M* GetSafeProxyInterface(T* WrapperInterface);
-
-	template <typename T>
-	void SaveAddress(T* Wrapper, IUnknown* Proxy);
-
-	template <typename T>
-	void DeleteAddress(T* Wrapper);
-
-private:
 	template <typename T>
 	struct AddressCacheIndex { static constexpr UINT CacheIndex = 0; };
 
@@ -65,21 +53,21 @@ private:
 	struct AddressCacheIndex<m_IDirect3DVolume9> { static constexpr UINT CacheIndex = 14; };
 	template <>
 	struct AddressCacheIndex<m_IDirect3DVolumeTexture9> { static constexpr UINT CacheIndex = 15; };
-	template <>
-	struct AddressCacheIndex<m_IDirect3DVideoDevice9> { static constexpr UINT CacheIndex = 16; };
-	template <>
-	struct AddressCacheIndex<m_IDirect3DDXVADevice9> { static constexpr UINT CacheIndex = 17; };
 
 	// General template function for CreateInterface
 	template <typename T, typename D, typename L>
-	inline T* CreateInterface(T* Proxy, D* Device, REFIID riid, L Data);
+	T* CreateInterface(T* Proxy, D* Device, REFIID riid, L Data);
+
+	template <typename T, typename D, typename L>
+	T* FindAddress(void* Proxy, D* Device, REFIID riid, L Data);
 
 	template <typename T>
-	inline IUnknown* GetIndentityInterface(IUnknown* Proxy);
+	void SaveAddress(T* Wrapper, void* Proxy);
 
 	template <typename T>
-	inline T* FindInterface(IUnknown* Proxy);
+	void DeleteAddress(T* Wrapper);
 
+private:
 	bool ConstructorFlag = false;
 	std::unordered_map<void*, class AddressLookupTableD3d9Object*> g_map[MaxIndex];
 };
@@ -92,8 +80,7 @@ private:
 public:
 	~StateBlockCache();
 
-	size_t size() { return stateBlocks.size(); }
-	m_IDirect3DStateBlock9* back() { return stateBlocks.back(); }
 	void AddStateBlock(m_IDirect3DStateBlock9* stateBlock);
 	void RemoveStateBlock(m_IDirect3DStateBlock9* stateBlock);
+	void ReleaseAllStateBlocks();
 };

@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2025 Elisha Riedlinger
+* Copyright (C) 2024 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -12,6 +12,8 @@
 *   2. Altered source versions must  be plainly  marked as such, and  must not be  misrepresented  as
 *      being the original software.
 *   3. This notice may not be removed or altered from any source distribution.
+* 
+* Code for 'Direct3D9SetSwapEffectUpgradeShim' taken from here:  https://github.com/crosire/reshade/commit/3fe0b050706fb9f3510ed48d619cad71f7cb28f2
 */
 
 #include "d3d9.h"
@@ -24,7 +26,7 @@ namespace D3d9Wrapper
 
 using namespace D3d9Wrapper;
 
-static HMODULE GetSystemD3d9()
+HMODULE GetSystemD3d9()
 {
 	static HMODULE h_d3d9 = nullptr;
 
@@ -40,7 +42,7 @@ static HMODULE GetSystemD3d9()
 	return h_d3d9;
 }
 
-static FARPROC GetD3d9UnnamedOrdinal(WORD Ordinal)
+FARPROC GetD3d9UnnamedOrdinal(WORD Ordinal)
 {
 	FARPROC proc = nullptr;
 
@@ -162,7 +164,7 @@ void WINAPI d9_D3DPERF_SetRegion(D3DCOLOR col, LPCWSTR wszName)
 	return D3DPERF_SetRegion(col, wszName);
 }
 
-static void WINAPI Direct3D9ForceHybridEnumeration(UINT Mode)
+void WINAPI Direct3D9ForceHybridEnumeration(UINT Mode)
 {
 	const WORD Ordinal = 16;
 
@@ -193,9 +195,6 @@ static void WINAPI Direct3D9ForceHybridEnumeration(UINT Mode)
 
 void WINAPI Direct3D9SetSwapEffectUpgradeShim(int Unknown)
 {
-	// Details about the 'Direct3D9SetSwapEffectUpgradeShim' function taken from here:
-	// https://github.com/crosire/reshade/commit/3fe0b050706fb9f3510ed48d619cad71f7cb28f2
-
 	const WORD Ordinal = 18;
 
 	static FARPROC proc = nullptr;
@@ -223,7 +222,7 @@ void WINAPI Direct3D9SetSwapEffectUpgradeShim(int Unknown)
 	reinterpret_cast<decltype(&Direct3D9SetSwapEffectUpgradeShim)>(proc)(Unknown);
 }
 
-static void WINAPI Direct3D9DisableMaximizedWindowedMode()
+void WINAPI Direct3D9DisableMaximizedWindowedMode()
 {
 	static FARPROC proc = nullptr;
 
@@ -268,21 +267,6 @@ static void WINAPI Direct3D9DisableMaximizedWindowedMode()
 	return;
 }
 
-static void SetupIDirect3D9()
-{
-	// Set Hybrid Adapter
-	if (Config.GraphicsHybridAdapter)
-	{
-		Direct3D9ForceHybridEnumeration(Config.GraphicsHybridAdapter);
-	}
-
-	// Disable MaxWindowedMode
-	if (Config.DXPrimaryEmulation[AppCompatDataType.DisableMaxWindowedMode])
-	{
-		Direct3D9DisableMaximizedWindowedMode();
-	}
-}
-
 IDirect3D9* WINAPI d9_Direct3DCreate9(UINT SDKVersion)
 {
 	LOG_LIMIT(1, __FUNCTION__);
@@ -294,65 +278,26 @@ IDirect3D9* WINAPI d9_Direct3DCreate9(UINT SDKVersion)
 		return nullptr;
 	}
 
-	SetupIDirect3D9();
-
-	if (Config.D3d9on12 && Config.D3d9to9Ex)
+	if (Config.ForceDirect3D9On12 && Direct3DCreate9On12_out)
 	{
-		DEFINE_STATIC_PROC_ADDRESS(Direct3DCreate9On12ExProc, Direct3DCreate9On12Ex, Direct3DCreate9On12Ex_out);
+		// Setup arguments
+		D3D9ON12_ARGS args;
+		memset(&args, 0, sizeof(args));
+		args.Enable9On12 = TRUE;
 
-		if (Direct3DCreate9On12Ex)
-		{
-			// Setup arguments
-			D3D9ON12_ARGS args = {};
-			args.Enable9On12 = TRUE;
-
-			IDirect3D9Ex* pD3D9Ex = nullptr;
-
-			LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12Ex' ...");
-
-			if (SUCCEEDED(Direct3DCreate9On12Ex(SDKVersion, &args, 1, &pD3D9Ex)))
-			{
-				return new m_IDirect3D9Ex(pD3D9Ex, IID_IDirect3D9Ex);
-			}
-		}
+		// Call function
+		return d9_Direct3DCreate9On12(SDKVersion, &args, 1);
 	}
 
-	if (Config.D3d9on12)
+	if (Config.GraphicsHybridAdapter)
 	{
-		DEFINE_STATIC_PROC_ADDRESS(Direct3DCreate9On12Proc, Direct3DCreate9On12, Direct3DCreate9On12_out);
-
-		if (Direct3DCreate9On12)
-		{
-			// Setup arguments
-			D3D9ON12_ARGS args = {};
-			args.Enable9On12 = TRUE;
-
-			LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12' ...");
-
-			IDirect3D9* pD3D9 = Direct3DCreate9On12(SDKVersion, &args, 1);
-
-			if (pD3D9)
-			{
-				return new m_IDirect3D9Ex((IDirect3D9Ex*)pD3D9, IID_IDirect3D9);
-			}
-		}
+		Direct3D9ForceHybridEnumeration(Config.GraphicsHybridAdapter);
 	}
 
-	if (Config.D3d9to9Ex)
+	// Disable MaxWindowedMode
+	if (Config.DXPrimaryEmulation[AppCompatDataType.DisableMaxWindowedMode])
 	{
-		DEFINE_STATIC_PROC_ADDRESS(Direct3DCreate9ExProc, Direct3DCreate9Ex, Direct3DCreate9Ex_out);
-
-		if (Direct3DCreate9Ex)
-		{
-			IDirect3D9Ex* pD3D9Ex = nullptr;
-
-			LOG_LIMIT(3, "Redirecting 'Direct3DCreate9Ex' ...");
-
-			if (SUCCEEDED(Direct3DCreate9Ex(SDKVersion, &pD3D9Ex)))
-			{
-				return new m_IDirect3D9Ex(pD3D9Ex, IID_IDirect3D9Ex);
-			}
-		}
+		Direct3D9DisableMaximizedWindowedMode();
 	}
 
 	LOG_LIMIT(3, "Redirecting 'Direct3DCreate9' ...");
@@ -379,29 +324,26 @@ HRESULT WINAPI d9_Direct3DCreate9Ex(UINT SDKVersion, IDirect3D9Ex** ppD3D)
 		return D3DERR_INVALIDCALL;
 	}
 
-	SetupIDirect3D9();
-
-	if (Config.D3d9on12)
+	if (Config.ForceDirect3D9On12 && Direct3DCreate9On12Ex_out)
 	{
-		DEFINE_STATIC_PROC_ADDRESS(Direct3DCreate9On12ExProc, Direct3DCreate9On12Ex, Direct3DCreate9On12Ex_out);
+		// Setup arguments
+		D3D9ON12_ARGS args;
+		memset(&args, 0, sizeof(args));
+		args.Enable9On12 = TRUE;
 
-		if (Direct3DCreate9On12Ex)
-		{
-			// Setup arguments
-			D3D9ON12_ARGS args = {};
-			args.Enable9On12 = TRUE;
+		// Call function
+		return d9_Direct3DCreate9On12Ex(SDKVersion, &args, 1, ppD3D);
+	}
 
-			IDirect3D9Ex* pD3D9Ex = nullptr;
+	if (Config.GraphicsHybridAdapter)
+	{
+		Direct3D9ForceHybridEnumeration(Config.GraphicsHybridAdapter);
+	}
 
-			LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12Ex' ...");
-
-			if (SUCCEEDED(Direct3DCreate9On12Ex(SDKVersion, &args, 1, &pD3D9Ex)))
-			{
-				*ppD3D = new m_IDirect3D9Ex(pD3D9Ex, IID_IDirect3D9Ex);
-
-				return D3D_OK;
-			}
-		}
+	// Disable MaxWindowedMode
+	if (Config.DXPrimaryEmulation[AppCompatDataType.DisableMaxWindowedMode])
+	{
+		Direct3D9DisableMaximizedWindowedMode();
 	}
 
 	LOG_LIMIT(3, "Redirecting 'Direct3DCreate9Ex' ...");
@@ -427,34 +369,23 @@ IDirect3D9* WINAPI d9_Direct3DCreate9On12(UINT SDKVersion, D3D9ON12_ARGS* pOverr
 		return d9_Direct3DCreate9(SDKVersion);
 	}
 
-	SetupIDirect3D9();
-
-	if (Config.D3d9on12 && pOverrideList)
+	if (Config.GraphicsHybridAdapter)
 	{
-		for (UINT x = 0; x < NumOverrideEntries; x++)
-		{
-			pOverrideList[x].Enable9On12 = TRUE;
-		}
+		Direct3D9ForceHybridEnumeration(Config.GraphicsHybridAdapter);
 	}
 
-	if (Config.D3d9to9Ex)
+	// Disable MaxWindowedMode
+	if (Config.DXPrimaryEmulation[AppCompatDataType.DisableMaxWindowedMode])
 	{
-		DEFINE_STATIC_PROC_ADDRESS(Direct3DCreate9On12ExProc, Direct3DCreate9On12Ex, Direct3DCreate9On12Ex_out);
-
-		if (Direct3DCreate9On12Ex)
-		{
-			IDirect3D9Ex* pD3D9Ex = nullptr;
-
-			LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12Ex' ...");
-
-			if (SUCCEEDED(Direct3DCreate9On12Ex(SDKVersion, pOverrideList, NumOverrideEntries, &pD3D9Ex)))
-			{
-				return new m_IDirect3D9Ex(pD3D9Ex, IID_IDirect3D9Ex);
-			}
-		}
+		Direct3D9DisableMaximizedWindowedMode();
 	}
 
 	LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12' ...");
+
+	if (Config.ForceDirect3D9On12 && pOverrideList)
+	{
+		pOverrideList->Enable9On12 = TRUE;
+	}
 
 	// Create new d3d9 object
 	IDirect3D9* pD3D9 = Direct3DCreate9On12(SDKVersion, pOverrideList, NumOverrideEntries);
@@ -478,17 +409,23 @@ HRESULT WINAPI d9_Direct3DCreate9On12Ex(UINT SDKVersion, D3D9ON12_ARGS* pOverrid
 		return d9_Direct3DCreate9Ex(SDKVersion, ppOutputInterface);
 	}
 
-	SetupIDirect3D9();
-
-	if (Config.D3d9on12 && pOverrideList)
+	if (Config.GraphicsHybridAdapter)
 	{
-		for (UINT x = 0; x < NumOverrideEntries; x++)
-		{
-			pOverrideList[x].Enable9On12 = TRUE;
-		}
+		Direct3D9ForceHybridEnumeration(Config.GraphicsHybridAdapter);
+	}
+
+	// Disable MaxWindowedMode
+	if (Config.DXPrimaryEmulation[AppCompatDataType.DisableMaxWindowedMode])
+	{
+		Direct3D9DisableMaximizedWindowedMode();
 	}
 
 	LOG_LIMIT(3, "Redirecting 'Direct3DCreate9On12Ex' ...");
+
+	if (Config.ForceDirect3D9On12 && pOverrideList)
+	{
+		pOverrideList->Enable9On12 = TRUE;
+	}
 
 	HRESULT hr = Direct3DCreate9On12Ex(SDKVersion, pOverrideList, NumOverrideEntries, ppOutputInterface);
 

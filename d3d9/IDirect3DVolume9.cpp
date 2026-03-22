@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2025 Elisha Riedlinger
+* Copyright (C) 2024 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -16,26 +16,20 @@
 
 #include "d3d9.h"
 
-// ******************************
-// IUnknown functions
-// ******************************
-
 HRESULT m_IDirect3DVolume9::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ") " << riid;
 
-	if (!ppvObj)
-	{
-		return E_POINTER;
-	}
-
 	if (riid == IID_IUnknown || riid == WrapperID)
 	{
-		AddRef();
+		HRESULT hr = ProxyInterface->QueryInterface(WrapperID, ppvObj);
 
-		*ppvObj = this;
+		if (SUCCEEDED(hr))
+		{
+			*ppvObj = this;
+		}
 
-		return D3D_OK;
+		return hr;
 	}
 
 	HRESULT hr = ProxyInterface->QueryInterface(riid, ppvObj);
@@ -59,32 +53,19 @@ ULONG m_IDirect3DVolume9::Release(THIS)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	ULONG ref = ProxyInterface->Release();
-
-	if (ref == 0 && m_pDeviceEx->GetClientDXVersion() < 8)
-	{
-		m_pDeviceEx->GetLookupTable()->DeleteAddress(this);
-
-		delete this;
-	}
-
-	return ref;
+	return ProxyInterface->Release();
 }
-
-// ******************************
-// IDirect3DVolume9 methods
-// ******************************
 
 HRESULT m_IDirect3DVolume9::GetDevice(THIS_ IDirect3DDevice9** ppDevice)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	if (FAILED(m_pDeviceEx->QueryInterface(m_pDeviceEx->GetIID(), (LPVOID*)ppDevice)))
+	if (!ppDevice)
 	{
 		return D3DERR_INVALIDCALL;
 	}
 
-	return D3D_OK;
+	return m_pDeviceEx->QueryInterface(m_pDeviceEx->GetIID(), (LPVOID*)ppDevice);
 }
 
 HRESULT m_IDirect3DVolume9::SetPrivateData(THIS_ REFGUID refguid, CONST void* pData, DWORD SizeOfData, DWORD Flags)
@@ -114,7 +95,7 @@ HRESULT m_IDirect3DVolume9::GetContainer(THIS_ REFIID riid, void** ppContainer)
 
 	HRESULT hr = ProxyInterface->GetContainer(riid, ppContainer);
 
-	if (SUCCEEDED(hr) && ppContainer)
+	if (SUCCEEDED(hr))
 	{
 		D3d9Wrapper::genericQueryInterface(riid, ppContainer, m_pDeviceEx);
 	}

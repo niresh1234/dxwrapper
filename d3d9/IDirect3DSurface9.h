@@ -5,50 +5,34 @@ class m_IDirect3DSurface9 : public IDirect3DSurface9, public AddressLookupTableD
 private:
 	LPDIRECT3DSURFACE9 ProxyInterface;
 	m_IDirect3DDevice9Ex* m_pDeviceEx;
-	const IID WrapperID = IID_IDirect3DSurface9;
-	D3DSURFACE_DESC Desc = {};
-
-	// For multi-sampling
-	bool DeviceMultiSampleFlag = false;
-	D3DMULTISAMPLE_TYPE DeviceMultiSampleType = D3DMULTISAMPLE_NONE;
-	DWORD DeviceMultiSampleQuality = 0;
+	REFIID WrapperID = IID_IDirect3DSurface9;
 
 	// For fake emulated locking
-	bool IsSurfaceTexture = false;
-	m_IDirect3DTexture9* pTextureContainer = nullptr;
+	D3DSURFACE_DESC Desc = {};
 	struct {
-		bool UsingEmulatedSurface = false;
 		bool ReadOnly = false;
-		DWORD SurfaceUSN = 0;
-		LPDIRECT3DSURFACE9 pSurface = nullptr;
+		RECT* pRect = nullptr;
+		RECT Rect = {};
+		m_IDirect3DSurface9* pSurface = nullptr;
 	} Emu;
 
-	inline bool ShouldEmulateMultiSampledSurface() const;
-	inline bool ShouldEmulateNonMultiSampledSurface() const;
-	inline bool IsEmulatedSurfaceOutofDate() const;
+	m_IDirect3DSurface9* m_GetNonMultiSampledSurface(const RECT* pSurfaceRect, DWORD Flags);
 
 public:
 	m_IDirect3DSurface9(LPDIRECT3DSURFACE9 pSurface9, m_IDirect3DDevice9Ex* pDevice) : ProxyInterface(pSurface9), m_pDeviceEx(pDevice)
 	{
 		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ")");
 
-		InitInterface(pDevice, WrapperID, nullptr);
+		if (FAILED(GetDesc(&Desc)))
+		{
+			LOG_LIMIT(3, __FUNCTION__ << " Failed to GetDesc()!" << this << ")");
+		}
 
 		m_pDeviceEx->GetLookupTable()->SaveAddress(this, ProxyInterface);
 	}
 	~m_IDirect3DSurface9()
 	{
 		LOG_LIMIT(3, __FUNCTION__ << " (" << this << ")" << " deleting interface!");
-
-		if (Emu.pSurface)
-		{
-			ULONG eref = Emu.pSurface->Release();
-			if (eref)
-			{
-				Logging::Log() << __FUNCTION__ << " Error: there is still a reference to 'Emu.pSurface' " << eref;
-			}
-			Emu.pSurface = nullptr;
-		}
 	}
 
 	/*** IUnknown methods ***/
@@ -56,7 +40,7 @@ public:
 	STDMETHOD_(ULONG, AddRef)(THIS);
 	STDMETHOD_(ULONG, Release)(THIS);
 
-	/*** IDirect3DSurface9 methods ***/
+	/*** IDirect3DResource9 methods ***/
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice);
 	STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid, CONST void* pData, DWORD SizeOfData, DWORD Flags);
 	STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid, void* pData, DWORD* pSizeOfData);
@@ -72,20 +56,20 @@ public:
 	STDMETHOD(GetDC)(THIS_ HDC *phdc);
 	STDMETHOD(ReleaseDC)(THIS_ HDC hdc);
 
-	// Information functions
-	LPDIRECT3DSURFACE9 GetProxyInterface() const { return ProxyInterface; }
-	ULONG GetEmulatedSurfaceCount() const { return Emu.pSurface ? 1 : 0; }
-
 	// Helper functions
-	void InitInterface(m_IDirect3DDevice9Ex* Device, REFIID, void*);
-	void SetTextureContainer(m_IDirect3DTexture9* pTexture);
-	void ClearTextureContainer() { pTextureContainer = nullptr; }
-	void ReleaseEmulatedSurface();
-	void PrepareReadingFromSurface();
-	void PrepareWritingToSurface(bool IncreamentUSN);
-	LPDIRECT3DSURFACE9 GetNonMultiSampledSurface(DWORD Flags);
-	LPDIRECT3DSURFACE9 GetMultiSampledSurface();
-	HRESULT CopyToEmulatedSurface();
-	HRESULT CopyToRealSurface();
+	LPDIRECT3DSURFACE9 GetProxyInterface() { return ProxyInterface; }
+	LPDIRECT3DSURFACE9 GetNonMultiSampledSurface(const RECT* pSurfaceRect, DWORD Flags)
+	{
+		if (Desc.MultiSampleType && !(Desc.Usage & D3DUSAGE_DEPTHSTENCIL))
+		{
+			m_IDirect3DSurface9* pSurface = m_GetNonMultiSampledSurface(pSurfaceRect, Flags);
+			if (pSurface)
+			{
+				return pSurface->GetProxyInterface();
+			}
+			LOG_LIMIT(100, __FUNCTION__ << " Error: getting non-multi-sampled surface!");
+		}
+		return ProxyInterface;
+	}
 	HRESULT RestoreMultiSampleData();
 };

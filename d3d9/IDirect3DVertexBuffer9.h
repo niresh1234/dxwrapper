@@ -5,14 +5,12 @@ class m_IDirect3DVertexBuffer9 : public IDirect3DVertexBuffer9, public AddressLo
 private:
 	LPDIRECT3DVERTEXBUFFER9 ProxyInterface;
 	m_IDirect3DDevice9Ex* m_pDeviceEx;
-	const IID WrapperID = IID_IDirect3DVertexBuffer9;
+	REFIID WrapperID = IID_IDirect3DVertexBuffer9;
 
 public:
 	m_IDirect3DVertexBuffer9(LPDIRECT3DVERTEXBUFFER9 pBuffer8, m_IDirect3DDevice9Ex* pDevice) : ProxyInterface(pBuffer8), m_pDeviceEx(pDevice)
 	{
 		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ")");
-
-		InitInterface(pDevice, WrapperID, nullptr);
 
 		m_pDeviceEx->GetLookupTable()->SaveAddress(this, ProxyInterface);
 	}
@@ -26,7 +24,7 @@ public:
 	STDMETHOD_(ULONG, AddRef)(THIS);
 	STDMETHOD_(ULONG, Release)(THIS);
 
-	/*** IDirect3DVertexBuffer9 methods ***/
+	/*** IDirect3DResource9 methods ***/
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice);
 	STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid, CONST void* pData, DWORD SizeOfData, DWORD Flags);
 	STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid, void* pData, DWORD* pSizeOfData);
@@ -40,6 +38,5 @@ public:
 	STDMETHOD(GetDesc)(THIS_ D3DVERTEXBUFFER_DESC *pDesc);
 
 	// Helper functions
-	LPDIRECT3DVERTEXBUFFER9 GetProxyInterface() const { return ProxyInterface; }
-	void InitInterface(m_IDirect3DDevice9Ex* Device, REFIID, void*) { m_pDeviceEx = Device; }
+	LPDIRECT3DVERTEXBUFFER9 GetProxyInterface() { return ProxyInterface; }
 };

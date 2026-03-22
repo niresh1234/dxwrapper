@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2025 Elisha Riedlinger
+* Copyright (C) 2024 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -12,14 +12,15 @@
 *   2. Altered source versions must  be plainly  marked as such, and  must not be  misrepresented  as
 *      being the original software.
 *   3. This notice may not be removed or altered from any source distribution.
+*
+* ValidatePixelShader and ValidateVertexShader created from source code found in Wine
+* https://gitlab.winehq.org/wine/wine/-/tree/master/dlls/d3d8
 */
 
 #include "d3d8External.h"
 #include "d3d9\d3d9External.h"
 #include "External\d3d8to9\source\d3d8to9.hpp"
 #include "External\d3d8to9\source\d3dx9.hpp"
-#include "IClassFactory\IClassFactory.h"
-#include "Utils\Utils.h"
 #include "Settings\Settings.h"
 #include "Logging\Logging.h"
 #include "BuildNo.rc"
@@ -39,16 +40,6 @@ PFN_D3DXLoadSurfaceFromSurface D3DXLoadSurfaceFromSurface = (PFN_D3DXLoadSurface
 namespace D3d8Wrapper
 {
 	INITIALIZE_OUT_WRAPPED_PROC(Direct3DCreate9, unused);
-
-	static void CheckSystemModule()
-	{
-		static bool RunOnce = true;
-		if (RunOnce && Utils::CheckIfSystemModuleLoaded("d3d8.dll"))
-		{
-			Logging::Log() << "Warning: System 'd3d8.dll' is already loaded before dxwrapper!";
-		}
-		RunOnce = false;
-	}
 }
 
 using namespace D3d8Wrapper;
@@ -58,70 +49,41 @@ HRESULT WINAPI d8_ValidatePixelShader(const DWORD* pPixelShader, const D3DCAPS8*
 	LOG_LIMIT(1, __FUNCTION__);
 
 	HRESULT hr = E_FAIL;
-	const char* message = "";
+	char* message = "";
 
-	// Check null
 	if (!pPixelShader)
 	{
-		message = "Invalid shader code pointer.\n";
+		message = "Invalid code pointer.\n";
 	}
 	else
 	{
-		// Get shader version
-		DWORD version = *pPixelShader;
-
-		// Supported versions
-		bool supported = false;
-		switch (version)
+		switch (*pPixelShader)
 		{
 		case D3DPS_VERSION(1, 0):
 		case D3DPS_VERSION(1, 1):
 		case D3DPS_VERSION(1, 2):
 		case D3DPS_VERSION(1, 3):
 		case D3DPS_VERSION(1, 4):
-			supported = true;
+			if (pCaps && *pPixelShader > pCaps->PixelShaderVersion)
+			{
+				message = "Shader version not supported by caps.\n";
+				break;
+			}
+			hr = D3D_OK;
 			break;
-		}
-
-		if (!supported)
-		{
+		default:
 			message = "Unsupported shader version.\n";
-		}
-		else if (pCaps && version > pCaps->PixelShaderVersion)
-		{
-			message = "Shader version not supported by caps.\n";
-		}
-		else
-		{
-			// Try disassembling to see if it's valid bytecode
-			ID3DXBuffer* pDisasm = nullptr;
-			hr = D3DXDisassembleShader(pPixelShader, FALSE, nullptr, &pDisasm);
-
-			if (SUCCEEDED(hr))
-			{
-				hr = D3D_OK;
-			}
-			else
-			{
-				message = "Shader disassembly failed. Possibly invalid bytecode.\n";
-			}
-
-			if (pDisasm)
-			{
-				pDisasm->Release();
-			}
 		}
 	}
 
-	// Only output error if flag is set
 	if (!ErrorsFlag)
 	{
 		message = "";
 	}
 
+	const size_t size = strlen(message) + 1;
 	if (Errors)
 	{
-		size_t size = strlen(message) + 1;
 		*Errors = (char*)HeapAlloc(GetProcessHeap(), 0, size);
 		if (*Errors)
 		{
@@ -136,90 +98,41 @@ HRESULT WINAPI d8_ValidateVertexShader(const DWORD* pVertexShader, const DWORD* 
 {
 	LOG_LIMIT(1, __FUNCTION__);
 
-	HRESULT hr = E_FAIL;
-	const char* message = "";
+	UNREFERENCED_PARAMETER(pDeclaration);
 
-	// Check shader pointer
+	HRESULT hr = E_FAIL;
+	char* message = "";
+
 	if (!pVertexShader)
 	{
-		message = "Invalid vertex shader pointer.\n";
+		message = "Invalid code pointer.\n";
 	}
 	else
 	{
-		DWORD version = *pVertexShader;
-
-		// Check if supported
-		bool supported = false;
-		switch (version)
+		switch (*pVertexShader)
 		{
 		case D3DVS_VERSION(1, 0):
 		case D3DVS_VERSION(1, 1):
-			supported = true;
+			if (pCaps && *pVertexShader > pCaps->VertexShaderVersion)
+			{
+				message = "Shader version not supported by caps.\n";
+				break;
+			}
+			hr = D3D_OK;
 			break;
-		}
-
-		if (!supported)
-		{
-			message = "Unsupported vertex shader version.\n";
-		}
-		else if (pCaps && version > pCaps->VertexShaderVersion)
-		{
-			message = "Vertex shader version not supported by caps.\n";
-		}
-		else
-		{
-			// Attempt to disassemble shader (soft validation)
-			ID3DXBuffer* pDisasm = nullptr;
-			hr = D3DXDisassembleShader(pVertexShader, FALSE, nullptr, &pDisasm);
-
-			if (FAILED(hr))
-			{
-				message = "Shader disassembly failed. Possibly invalid bytecode.\n";
-			}
-			else
-			{
-				hr = D3D_OK;
-			}
-
-			if (pDisasm)
-			{
-				pDisasm->Release();
-			}
+		default:
+			message = "Unsupported shader version.\n";
 		}
 	}
 
-	// Check vertex declaration pointer
-	if (SUCCEEDED(hr) && pDeclaration)
-	{
-		// Ensure declaration ends with D3DVSD_END()
-		const DWORD* decl = pDeclaration;
-		const size_t maxDeclDWords = 256; // Prevent runaway loop
-
-		for (size_t i = 0; i < maxDeclDWords; ++i, ++decl)
-		{
-			if (*decl == D3DVSD_END())
-			{
-				break; // Valid end found
-			}
-		}
-
-		if (*decl != D3DVSD_END())
-		{
-			message = "Vertex declaration appears malformed or unterminated.\n";
-			hr = E_FAIL;
-		}
-	}
-
-	// Clear error if not requested
 	if (!ErrorsFlag)
 	{
 		message = "";
 	}
 
-	// Output error if requested
+	const size_t size = strlen(message) + 1;
 	if (Errors)
 	{
-		size_t size = strlen(message) + 1;
 		*Errors = (char*)HeapAlloc(GetProcessHeap(), 0, size);
 		if (*Errors)
 		{
@@ -233,8 +146,6 @@ HRESULT WINAPI d8_ValidateVertexShader(const DWORD* pVertexShader, const DWORD* 
 Direct3D8 *WINAPI d8_Direct3DCreate8(UINT SDKVersion)
 {
 	LOG_LIMIT(1, __FUNCTION__);
-
-	CheckSystemModule();
 
 	if (!Config.D3d8to9)
 	{
@@ -260,18 +171,6 @@ Direct3D8 *WINAPI d8_Direct3DCreate8(UINT SDKVersion)
 	}
 
 	IDirect3D9 *const d3d = Direct3DCreate9(D3D_SDK_VERSION);
-
-	if (!d3d)
-	{
-		return nullptr;
-	}
-
-	// Set DirectX version
-	m_IDirect3D9Ex* D3DX = nullptr;
-	if (SUCCEEDED(d3d->QueryInterface(IID_GetInterfaceX, reinterpret_cast<LPVOID*>(&D3DX))))
-	{
-		D3DX->SetDirectXVersion(8);
-	}
 
 	return new Direct3D8(d3d);
 }

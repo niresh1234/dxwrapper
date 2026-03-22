@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2025 Elisha Riedlinger
+* Copyright (C) 2024 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -16,40 +16,27 @@
 
 #include "d3d9.h"
 
-// ******************************
-// IUnknown functions
-// ******************************
-
 HRESULT m_IDirect3DSwapChain9Ex::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ") " << riid;
 
-	if (!ppvObj)
+	if (riid == IID_IUnknown || riid == WrapperID)
 	{
-		return E_POINTER;
-	}
+		HRESULT hr = ProxyInterface->QueryInterface(WrapperID, ppvObj);
 
-	if (riid == IID_IUnknown || riid == WrapperID || (IsForcingD3d9to9Ex() && riid == IID_IDirect3DSwapChain9))
-	{
-		AddRef();
+		if (SUCCEEDED(hr))
+		{
+			*ppvObj = this;
+		}
 
-		*ppvObj = this;
-
-		return D3D_OK;
+		return hr;
 	}
 
 	HRESULT hr = ProxyInterface->QueryInterface(riid, ppvObj);
 
 	if (SUCCEEDED(hr))
 	{
-		if (riid == IID_IDirect3DSwapChain9 || riid == IID_IDirect3DSwapChain9Ex)
-		{
-			*ppvObj = m_pDeviceEx->GetLookupTable()->FindCreateAddress<m_IDirect3DSwapChain9Ex, m_IDirect3DDevice9Ex, LPVOID>(static_cast<IUnknown*>(*ppvObj), m_pDeviceEx, riid, nullptr);
-		}
-		else
-		{
-			D3d9Wrapper::genericQueryInterface(riid, ppvObj, m_pDeviceEx);
-		}
+		D3d9Wrapper::genericQueryInterface(riid, ppvObj, m_pDeviceEx);
 	}
 
 	return hr;
@@ -66,21 +53,8 @@ ULONG m_IDirect3DSwapChain9Ex::Release(THIS)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	ULONG ref = ProxyInterface->Release();
-
-	if (ref == 0 && m_pDeviceEx->GetClientDXVersion() < 8)
-	{
-		m_pDeviceEx->GetLookupTable()->DeleteAddress(this);
-
-		delete this;
-	}
-
-	return ref;
+	return ProxyInterface->Release();
 }
-
-// ******************************
-// IDirect3DSwapChain9 methods
-// ******************************
 
 HRESULT m_IDirect3DSwapChain9Ex::Present(THIS_ CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion, DWORD dwFlags)
 {
@@ -109,7 +83,7 @@ HRESULT m_IDirect3DSwapChain9Ex::GetBackBuffer(THIS_ UINT BackBuffer, D3DBACKBUF
 
 	if (SUCCEEDED(hr) && ppBackBuffer)
 	{
-		*ppBackBuffer = m_pDeviceEx->GetLookupTable()->FindCreateAddress<m_IDirect3DSurface9, m_IDirect3DDevice9Ex, LPVOID>(*ppBackBuffer, m_pDeviceEx, IID_IDirect3DSurface9, nullptr);
+		*ppBackBuffer = m_pDeviceEx->GetLookupTable()->FindAddress<m_IDirect3DSurface9, m_IDirect3DDevice9Ex, LPVOID>(*ppBackBuffer, m_pDeviceEx, IID_IDirect3DSurface9, nullptr);
 	}
 
 	return hr;
@@ -126,28 +100,6 @@ HRESULT m_IDirect3DSwapChain9Ex::GetDisplayMode(THIS_ D3DDISPLAYMODE* pMode)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	if (IsForcingD3d9to9Ex())
-	{
-		D3DDISPLAYMODEEX ModeEx = {};
-		ModeEx.Size = sizeof(D3DDISPLAYMODEEX);
-		D3DDISPLAYMODEEX* pModeEx = pMode ? &ModeEx : nullptr;
-
-		D3DDISPLAYROTATION Rotation = D3DDISPLAYROTATION_IDENTITY;
-		D3DDISPLAYROTATION* pRotation = pMode ? &Rotation : nullptr;
-
-		HRESULT hr = GetDisplayModeEx(pModeEx, pRotation);
-
-		if (SUCCEEDED(hr))
-		{
-			if (pMode)
-			{
-				m_IDirect3DDevice9Ex::ModeExToMode(ModeEx, *pMode);
-			}
-
-			return hr;
-		}
-	}
-
 	return ProxyInterface->GetDisplayMode(pMode);
 }
 
@@ -155,12 +107,12 @@ HRESULT m_IDirect3DSwapChain9Ex::GetDevice(THIS_ IDirect3DDevice9** ppDevice)
 {
 	Logging::LogDebug() << __FUNCTION__ << " (" << this << ")";
 
-	if (FAILED(m_pDeviceEx->QueryInterface(WrapperID == IID_IDirect3DSwapChain9Ex ? IID_IDirect3DDevice9Ex : m_pDeviceEx->GetIID(), (LPVOID*)ppDevice)))
+	if (!ppDevice)
 	{
 		return D3DERR_INVALIDCALL;
 	}
 
-	return D3D_OK;
+	return m_pDeviceEx->QueryInterface(WrapperID == IID_IDirect3DSwapChain9Ex ? IID_IDirect3DDevice9Ex : m_pDeviceEx->GetIID(), (LPVOID*)ppDevice);
 }
 
 HRESULT m_IDirect3DSwapChain9Ex::GetPresentParameters(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters)
@@ -169,10 +121,6 @@ HRESULT m_IDirect3DSwapChain9Ex::GetPresentParameters(THIS_ D3DPRESENT_PARAMETER
 
 	return ProxyInterface->GetPresentParameters(pPresentationParameters);
 }
-
-// ******************************
-// IDirect3DSwapChain9Ex methods
-// ******************************
 
 HRESULT m_IDirect3DSwapChain9Ex::GetLastPresentCount(THIS_ UINT* pLastPresentCount)
 {

@@ -1,14 +1,9 @@
 #pragma once
 
-#define __DXVA1_DEPRECATED_INTERFACES__
 #include <d3d9.h>
 #include "d3dx9.h"
-#include "d3d9Shared.h"
-#include <Dxva.h>
-#include <unordered_map>
-#include <unordered_set>
-#include <deque>
-#include <algorithm>
+#include "d3d9\d3d9External.h"
+#include "GDI\GDI.h"
 
 class m_IDirect3D9Ex;
 class m_IDirect3DDevice9Ex;
@@ -25,13 +20,9 @@ class m_IDirect3DVertexDeclaration9;
 class m_IDirect3DVertexShader9;
 class m_IDirect3DVolume9;
 class m_IDirect3DVolumeTexture9;
-class m_IDirect3DVideoDevice9;
-class m_IDirect3DDXVADevice9;
-class ShadowSurfaceStorage;
 
 #include "AddressLookupTable.h"
 #include "IClassFactory\IClassFactory.h"
-#include "GDI\GDI.h"
 #include "Utils\Utils.h"
 #include "Settings\Settings.h"
 #include "Logging\Logging.h"
@@ -107,16 +98,13 @@ typedef HRESULT(WINAPI* Direct3DCreate9ExProc)(UINT, IDirect3D9Ex**);
 typedef IDirect3D9* (WINAPI* Direct3DCreate9On12Proc)(UINT SDKVersion, D3D9ON12_ARGS* pOverrideList, UINT NumOverrideEntries);
 typedef HRESULT(WINAPI* Direct3DCreate9On12ExProc)(UINT SDKVersion, D3D9ON12_ARGS* pOverrideList, UINT NumOverrideEntries, IDirect3D9Ex** ppOutputInterface);
 
-#define SHARED (*DeviceDetailsMap[DDKey].get())
-
 constexpr UINT NO_MAP_VALUE = 0xFFFFFFFF;
 
-void WINAPI Direct3D9SetSwapEffectUpgradeShim(int Unknown);
+DWORD UpdateBehaviorFlags(DWORD BehaviorFlags);
 
 namespace D3d9Wrapper
 {
 	void WINAPI genericQueryInterface(REFIID riid, LPVOID* ppvObj, m_IDirect3DDevice9Ex* m_pDeviceEx);
-	void TestAllDeviceRefs(IDirect3DDevice9* device);
 }
 
 #include "ComPtr.h"
@@ -136,6 +124,3 @@ namespace D3d9Wrapper
 #include "IDirect3DVertexShader9.h"
 #include "IDirect3DVolume9.h"
 #include "IDirect3DVolumeTexture9.h"
-#include "IDirect3DVideoDevice9.h"
-#include "IDirect3DDXVADevice9.h"
-#include "ShadowSurfaceStorage.h"

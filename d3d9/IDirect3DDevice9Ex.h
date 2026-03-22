@@ -2,17 +2,14 @@
 
 static constexpr size_t MAX_CLIP_PLANES = 6;
 static constexpr size_t MAX_TEXTURE_STAGES = 8;
+static constexpr size_t MAX_STATE_BLOCKS = 1024;
 const std::chrono::seconds FPS_CALCULATION_WINDOW(1);	// Define a constant for the desired duration of FPS calculation
 
 struct DEVICEDETAILS
 {
 	DEVICEDETAILS()
 	{
-		if (!InitializeCriticalSectionAndSpinCount(&d9cs, 4000))
-		{
-			Logging::Log() << __FUNCTION__ << " Warning: failed to initialize CriticalSectionAndSpinCount for d9cs.  Failing over to CriticalSection!";
-			InitializeCriticalSection(&d9cs);
-		}
+		InitializeCriticalSection(&d9cs);
 	}
 	~DEVICEDETAILS()
 	{
@@ -20,14 +17,8 @@ struct DEVICEDETAILS
 	}
 
 	// Window handle and size
-	DWORD ClientDirectXVersion = 0;
 	bool IsWindowMode = false;
-	bool AppRequestedWindowMode = false;
 	bool IsDirectDrawDevice = false;
-	UINT Adapter = D3DADAPTER_DEFAULT;
-	D3DDEVTYPE DeviceType = D3DDEVTYPE_HAL;
-	DWORD BackBufferCount = 0;
-	HMONITOR hMonitor = nullptr;
 	HWND DeviceWindow = nullptr;
 	LONG BufferWidth = 0, BufferHeight = 0;
 	LONG screenWidth = 0, screenHeight = 0;
@@ -40,7 +31,11 @@ struct DEVICEDETAILS
 
 	StateBlockCache StateBlockTable;
 
-	StateBlockCache DeletedStateBlocks;
+	D3DCAPS9 Caps = {};
+
+	// Begin/End Scene
+	bool IsInScene = false;
+	bool BeginSceneCalled = false;
 
 	// Limit frame rate
 	struct {
@@ -53,52 +48,28 @@ struct DEVICEDETAILS
 	std::deque<std::pair<std::chrono::steady_clock::time_point, std::chrono::duration<double>>> frameTimes;	// Store frame times in a deque
 	std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();	// Store start time for PFS counter
 
+	// FPS display
+	ID3DXFont* pFont = nullptr;
+	ID3DXSprite* pSprite = nullptr;
+
 	// For AntiAliasing
 	bool DeviceMultiSampleFlag = false;
-	bool SetMultiSampleState = false;
-	bool UseAppMultiSampleState = false;
 	bool SetSSAA = false;
-	bool SetATOC = false;
 	D3DMULTISAMPLE_TYPE DeviceMultiSampleType = D3DMULTISAMPLE_NONE;
 	DWORD DeviceMultiSampleQuality = 0;
-};
 
-extern std::unordered_map<UINT, std::unique_ptr<DEVICEDETAILS>> DeviceDetailsMap;
-
-#include "IDirect3D9Ex.h"
-
-class m_IDirect3DDevice9Ex : public IDirect3DDevice9Ex, public AddressLookupTableD3d9Object
-{
-private:
-	LPDIRECT3DDEVICE9 ProxyInterface;
-	LPDIRECT3DDEVICE9EX ProxyInterfaceEx = nullptr;
-	m_IDirect3D9Ex* m_pD3DEx;
-	const IID WrapperID;
-	std::unique_ptr<ShadowSurfaceStorage> ShadowBackbuffer = std::make_unique<ShadowSurfaceStorage>();
-	std::vector<IDirect3DSurface9*> BackBufferList;
-
-	UINT DDKey;
-
-	D3DCAPS9 Caps = {};
-
-	// Begin/End Scene
-	bool IsInScene = false;
-	bool BeginSceneCalled = false;
-
-	std::unordered_set<m_IDirect3DSurface9*> EmulatedSurfaceList;
-
-	// FPS display
-	LPD3DXFONT pFont = nullptr;
-	DWORD FontRefCount = 0;
-	LPD3DXSPRITE pSprite = nullptr;
-	DWORD SprintRefCount = 0;
+	// Anisotropic Filtering
+	DWORD MaxAnisotropy = 0;
+	bool isAnisotropySet = false;
+	bool AnisotropyDisabledFlag = false;	// Tracks when Anisotropic Fintering was disabled becasue lack of multi-stage texture support
 
 	// State block
+	bool DontReleaseResources = false;
 	IDirect3DStateBlock9* pStateBlock = nullptr;
 
 	// For environment map cube
-	bool isTextureCubeMap[MAX_TEXTURE_STAGES] = {};
-	bool isTransformCubeMap[MAX_TEXTURE_STAGES] = {};
+	bool isTextureMapCube[MAX_TEXTURE_STAGES] = {};
+	bool isTransformMapCube[MAX_TEXTURE_STAGES] = {};
 	DWORD texCoordIndex[MAX_TEXTURE_STAGES] = {};
 	DWORD texTransformFlags[MAX_TEXTURE_STAGES] = {};
 	bool isBlankTextureUsed = false;
@@ -107,8 +78,8 @@ private:
 
 	// For CacheClipPlane
 	bool isClipPlaneSet = false;
-	DWORD ClipPlaneRenderState = 0;
-	float StoredClipPlanes[MAX_CLIP_PLANES][4] = {};
+	DWORD m_clipPlaneRenderState = 0;
+	float m_storedClipPlanes[MAX_CLIP_PLANES][4] = {};
 
 	// For gamma
 	bool IsGammaSet = false;
@@ -118,98 +89,78 @@ private:
 	LPDIRECT3DTEXTURE9 GammaLUTTexture = nullptr;
 	LPDIRECT3DTEXTURE9 ScreenCopyTexture = nullptr;
 	LPDIRECT3DPIXELSHADER9 gammaPixelShader = nullptr;
+};
 
-	// Anisotropic Filtering
-	DWORD MaxAnisotropy = 0;
-	bool isAnisotropySet = false;
-	bool AnisotropyDisabledFlag = false;	// Tracks when Anisotropic Fintering was disabled becasue lack of multi-stage texture support
+extern std::unordered_map<UINT, DEVICEDETAILS> DeviceDetailsMap;
 
-	// Antialiasing
-	struct {
-		bool MultiSampleMismatch = false;
-		bool RenderTargetNonMultiSampled = false;
-		bool DepthStencilNonMultiSampled = false;
-		bool NullDepthStencil = false;
-		m_IDirect3DSurface9* RenderTarget = nullptr;
-	} msaa;
+#include "IDirect3D9Ex.h"
 
-	void ApplyPreDrawFixes();
-	void ApplyPostDrawFixes();
-	void ApplyPrePresentFixes();
-	void ApplyPostPresentFixes();
+#define SHARED DeviceDetailsMap[DDKey]
 
-	void ApplyClipPlanes();
+class m_IDirect3DDevice9Ex : public IDirect3DDevice9Ex, public AddressLookupTableD3d9Object
+{
+private:
+	LPDIRECT3DDEVICE9 ProxyInterface;
+	LPDIRECT3DDEVICE9EX ProxyInterfaceEx = nullptr;
+	m_IDirect3D9Ex* m_pD3DEx;
+	REFIID WrapperID;
 
-	void AfterBeginScene();
-	void BeforeEndScene();
+	UINT DDKey;
 
-	inline bool RequirePresentHandling() const;
-	inline bool UsingShadowBackBuffer(DWORD iSwapChain = 0) const;
+	void ApplyDrawFixes();
+	void ApplyPresentFixes();
+
+	HRESULT CallEndScene();
 
 	// Limit frame rate
 	void LimitFrameRate() const;
 
 	// Frame counter
 	void CalculateFPS() const;
-	void DrawFPS(float fps, const RECT& presentRect, DWORD position);
+	void DrawFPS(float fps, const RECT& presentRect, DWORD position) const;
 
 	// Anisotropic Filtering
 	void DisableAnisotropicSamplerState(bool AnisotropyMin, bool AnisotropyMag);
-	void ReenableAnisotropicSamplerState();
+	void ReeableAnisotropicSamplerState();
 
 	// Gamma
 	HRESULT SetBrightnessLevel(D3DGAMMARAMP& Ramp);
-	LPDIRECT3DPIXELSHADER9 GetGammaPixelShader();
+	LPDIRECT3DPIXELSHADER9 GetGammaPixelShader() const;
 	void ApplyBrightnessLevel();
-	DWORD GetResourceRefCount();
 	void ReleaseResources(bool isReset);
 
 	// For environment map cube
-	void CheckTransformForCubeMap(D3DTRANSFORMSTATETYPE State, CONST D3DMATRIX* pMatrix);
+	void CheckTransformForCubeMap(D3DTRANSFORMSTATETYPE State, CONST D3DMATRIX* pMatrix) const;
 	bool CheckTextureStageForCubeMap() const;
-	void SetEnvironmentCubeMapTexture();
+	void SetEnvironmentMapCubeTexture();
 
 	// For Reset & ResetEx
-	void ReInitInterface();
-	void CreateShadowBackbuffer();
-	void ReleaseShadowBackbuffer();
-	void ClearVars();
+	void ReInitInterface() const;
+	void ClearVars(D3DPRESENT_PARAMETERS* pPresentationParameters) const;
 	typedef HRESULT(WINAPI* fReset)(D3DPRESENT_PARAMETERS* pPresentationParameters);
 	typedef HRESULT(WINAPI* fResetEx)(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode);
 	template <typename T>
-	HRESULT ResetT(T, D3DPRESENT_PARAMETERS* pPresentationParameters, bool IsEx, D3DDISPLAYMODEEX* pFullscreenDisplayMode);
+	HRESULT ResetT(T, D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode = nullptr);
 	inline HRESULT ResetT(fReset, D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX*)
 	{ return ProxyInterface->Reset(pPresentationParameters); }
 	inline HRESULT ResetT(fResetEx, D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode)
 	{ return (ProxyInterfaceEx) ? ProxyInterfaceEx->ResetEx(pPresentationParameters, pFullscreenDisplayMode) : D3DERR_INVALIDCALL; }
 
-	// Information
-	inline bool IsForcingD3d9to9Ex() const { return (Config.D3d9to9Ex && ProxyInterface == ProxyInterfaceEx); }
-
 public:
 	m_IDirect3DDevice9Ex(LPDIRECT3DDEVICE9EX pDevice, m_IDirect3D9Ex* pD3D, REFIID DeviceID, UINT Key) : ProxyInterface(pDevice), m_pD3DEx(pD3D), WrapperID(DeviceID), DDKey(Key)
 	{
-		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ") " << WrapperID << " game interface v" << SHARED.ClientDirectXVersion);
+		LOG_LIMIT(3, "Creating interface " << __FUNCTION__ << " (" << this << ") " << WrapperID);
 
 		if (WrapperID == IID_IDirect3DDevice9Ex)
 		{
 			ProxyInterfaceEx = pDevice;
 		}
 
-		D3d9Wrapper::TestAllDeviceRefs(ProxyInterface);
-
 		// Check for SSAA
-		if (SHARED.DeviceMultiSampleType && m_pD3DEx)
+		if (SHARED.DeviceMultiSampleType && m_pD3DEx &&
+			m_pD3DEx->CheckDeviceFormat(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8, 0, D3DRTYPE_SURFACE, (D3DFORMAT)MAKEFOURCC('S', 'S', 'A', 'A')) == S_OK)
 		{
-			if (m_pD3DEx->CheckDeviceFormat(SHARED.Adapter, SHARED.DeviceType, D3DFMT_X8R8G8B8, 0, D3DRTYPE_SURFACE, (D3DFORMAT)MAKEFOURCC('S', 'S', 'A', 'A')) == S_OK)
-			{
-				SHARED.SetSSAA = true;
-			}
-			if (Config.EnableMultisamplingATOC &&
-				m_pD3DEx->CheckDeviceFormat(SHARED.Adapter, SHARED.DeviceType, D3DFMT_X8R8G8B8, 0, D3DRTYPE_SURFACE, (D3DFORMAT)MAKEFOURCC('A', 'T', 'O', 'C')) == S_OK)
-			{
-				SHARED.SetATOC = true;
-			}
+			SHARED.SetSSAA = true;
 		}
 
 		ReInitInterface();
@@ -256,10 +207,12 @@ public:
 	STDMETHOD(CreateIndexBuffer)(THIS_ UINT Length, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DIndexBuffer9** ppIndexBuffer, HANDLE* pSharedHandle);
 	STDMETHOD(CreateRenderTarget)(THIS_ UINT Width, UINT Height, D3DFORMAT Format, D3DMULTISAMPLE_TYPE MultiSample, DWORD MultisampleQuality, BOOL Lockable, IDirect3DSurface9** ppSurface, HANDLE* pSharedHandle);
 	STDMETHOD(CreateDepthStencilSurface)(THIS_ UINT Width, UINT Height, D3DFORMAT Format, D3DMULTISAMPLE_TYPE MultiSample, DWORD MultisampleQuality, BOOL Discard, IDirect3DSurface9** ppSurface, HANDLE* pSharedHandle);
-	STDMETHOD(UpdateSurface)(THIS_ IDirect3DSurface9* pSourceSurface, CONST RECT* pSourceRect, IDirect3DSurface9* pDestSurface, CONST POINT* pDestPoint);
+	STDMETHOD(UpdateSurface)(THIS_ IDirect3DSurface9* pSourceSurface, CONST RECT* pSourceRect, IDirect3DSurface9* pDestinationSurface, CONST POINT* pDestPoint);
 	STDMETHOD(UpdateTexture)(THIS_ IDirect3DBaseTexture9* pSourceTexture, IDirect3DBaseTexture9* pDestinationTexture);
 	STDMETHOD(GetRenderTargetData)(THIS_ IDirect3DSurface9* pRenderTarget, IDirect3DSurface9* pDestSurface);
 	STDMETHOD(GetFrontBufferData)(THIS_ UINT iSwapChain, IDirect3DSurface9* pDestSurface);
+	STDMETHOD(FakeGetFrontBufferData)(THIS_ UINT iSwapChain, IDirect3DSurface9* pDestSurface);
+	STDMETHOD(CopyRects)(THIS_ IDirect3DSurface9 *pSourceSurface, const RECT *pSourceRectsArray, UINT cRects, IDirect3DSurface9 *pDestinationSurface, const POINT *pDestPointsArray);
 	STDMETHOD(StretchRect)(THIS_ IDirect3DSurface9* pSourceSurface, CONST RECT* pSourceRect, IDirect3DSurface9* pDestSurface, CONST RECT* pDestRect, D3DTEXTUREFILTERTYPE Filter);
 	STDMETHOD(ColorFill)(THIS_ IDirect3DSurface9* pSurface, CONST RECT* pRect, D3DCOLOR color);
 	STDMETHOD(CreateOffscreenPlainSurface)(THIS_ UINT Width, UINT Height, D3DFORMAT Format, D3DPOOL Pool, IDirect3DSurface9** ppSurface, HANDLE* pSharedHandle);
@@ -283,6 +236,7 @@ public:
 	STDMETHOD(GetLightEnable)(THIS_ DWORD Index, BOOL* pEnable);
 	STDMETHOD(SetClipPlane)(THIS_ DWORD Index, CONST float* pPlane);
 	STDMETHOD(GetClipPlane)(THIS_ DWORD Index, float* pPlane);
+	void ApplyClipPlanes();
 	STDMETHOD(SetRenderState)(THIS_ D3DRENDERSTATETYPE State, DWORD Value);
 	STDMETHOD(GetRenderState)(THIS_ D3DRENDERSTATETYPE State, DWORD* pValue);
 	STDMETHOD(CreateStateBlock)(THIS_ D3DSTATEBLOCKTYPE Type, IDirect3DStateBlock9** ppSB);
@@ -363,25 +317,9 @@ public:
 	STDMETHOD(ResetEx)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX *pFullscreenDisplayMode);
 	STDMETHOD(GetDisplayModeEx)(THIS_ UINT iSwapChain, D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation);
 
-	// Information functions
-	LPDIRECT3DDEVICE9 GetProxyInterface() const { return ProxyInterface; }
-	void InitInterface(void*, REFIID, UINT) {}	// Stub only
-	AddressLookupTableD3d9* GetLookupTable() const { return &SHARED.ProxyAddressLookupTable9; }
-	StateBlockCache* GetStateBlockTable() const { return &SHARED.StateBlockTable; }
-	StateBlockCache* GetDeletedStateBlock() const { return &SHARED.DeletedStateBlocks; }
-	bool GetDeviceMultiSampleFlag() const { return SHARED.DeviceMultiSampleFlag; }
-	D3DMULTISAMPLE_TYPE GetDeviceMultiSampleType() const { return SHARED.DeviceMultiSampleType; }
-	DWORD GetDeviceMultiSampleQuality() const { return SHARED.DeviceMultiSampleQuality; }
-	DWORD GetClientDXVersion() const { return SHARED.ClientDirectXVersion; }
-	REFIID GetIID() { return WrapperID; }
-	void AddSurfaceToList(m_IDirect3DSurface9* pSurface) { EmulatedSurfaceList.insert(pSurface); }
-	void RemoveSurfaceFromList(m_IDirect3DSurface9* pSurface) { EmulatedSurfaceList.erase(pSurface); }
-
 	// Helper functions
-	HRESULT GetFakeFrontBufferData(THIS_ UINT iSwapChain, IDirect3DSurface9* pDestSurface);
-	HRESULT GetShadowFrontBufferData(THIS_ UINT iSwapChain, IDirect3DSurface9* pDestSurface);
-	m_IDirect3DStateBlock9* GetCreateStateBlock(IDirect3DStateBlock9* pSB);
-
-	// Static functions
-	static void ModeExToMode(D3DDISPLAYMODEEX& ModeEx, D3DDISPLAYMODE& Mode);
+	inline LPDIRECT3DDEVICE9 GetProxyInterface() const { return ProxyInterface; }
+	inline AddressLookupTableD3d9* GetLookupTable() const { return &SHARED.ProxyAddressLookupTable9; }
+	REFIID GetIID() { return WrapperID; }
 };
+#undef SHARED
